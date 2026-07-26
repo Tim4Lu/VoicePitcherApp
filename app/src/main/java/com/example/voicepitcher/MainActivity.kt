@@ -45,7 +45,6 @@ class MainActivity : Activity() {
     private lateinit var pitchSeekBar: SeekBar
     private lateinit var eqContainer: LinearLayout
 
-    // Зберігаємо стани для пташок та значень повзунків еквалайзера
     private val eqBandsEnabled = mutableMapOf<Int, Boolean>()
     private val eqBandsProgress = mutableMapOf<Int, Int>()
 
@@ -95,7 +94,6 @@ class MainActivity : Activity() {
         }
         layout.addView(playButton)
 
-        // Блок висоти голосу (Pitch)
         val pitchLabel = TextView(this).apply {
             text = "Висота голосу (Pitch): 1.0x"
             setPadding(0, 30, 0, 10)
@@ -127,7 +125,6 @@ class MainActivity : Activity() {
         }
         layout.addView(pitchSeekBar)
 
-        // Заголовок еквалайзера
         val eqTitle = TextView(this).apply {
             text = "🎛 Повноцінний еквалайзер голосу"
             textSize = 16f
@@ -135,13 +132,11 @@ class MainActivity : Activity() {
         }
         layout.addView(eqTitle)
 
-        // Контейнер, куди динамічно додаватимуться смуги з пташками та описами
         eqContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
         layout.addView(eqContainer)
 
-        // Ініціалізуємо стандартні смуги (створимо шаблонні, якщо медіаплеєр ще не дав сесію)
         buildDefaultEqualizerUI()
 
         saveButton = Button(this).apply {
@@ -161,14 +156,13 @@ class MainActivity : Activity() {
             centerHz < 150 -> "Гул / Низькі частоти (усуває задуху, вібрацію мікрофона)"
             centerHz < 400 -> "Тіло / Теплота голосу (додає щільності баритону)"
             centerHz < 1000 -> "Середина / Мутність (частоту краще трохи прибрати для чистоти)"
-            centerHz < 3000 -> "Чіتкість / Розбірливість мовлення (ключ для Adobe Podcast)"
+            centerHz < 3000 -> "Чіткість / Розбірливість мовлення (ключ для Adobe Podcast)"
             else -> "Дзвінкість / Повітря (додає яскравості та «дорогого» звуку)"
         }
     }
 
     private fun buildDefaultEqualizerUI() {
         eqContainer.removeAllViews()
-        // Якщо еквалайзер ще не ініціалізований, покажемо базові 5 стандартних діапазонів
         val defaultBands = listOf(60, 230, 910, 3000, 12000)
         
         for ((index, freq) in defaultBands.withIndex()) {
@@ -180,8 +174,9 @@ class MainActivity : Activity() {
             val isEnabled = eqBandsEnabled.getOrPut(index) { true }
             val progressVal = eqBandsProgress.getOrPut(index) { 50 }
 
+            val freqLabelStr = if (freq >= 1000) "${freq / 1000}kHz" else "${freq}Hz"
             val checkBox = CheckBox(this).apply {
-                text = "Смуга ${freq / 1000.let { if (it > 0) "${it}kHz" else "${freq}Hz" }}"
+                text = "Смуга: $freqLabelStr"
                 isChecked = isEnabled
                 setOnCheckedChangeListener { _, checked ->
                     eqBandsEnabled[index] = checked
@@ -278,8 +273,7 @@ class MainActivity : Activity() {
                 }
 
                 val progress = eqBandsProgress[i] ?: 50
-                // Конвертуємо шкалу 0..100 у мілібебели апаратного еквалайзера
-                val levelFactor = (progress - 50) / 50f // від -1.0 до +1.0
+                val levelFactor = (progress - 50) / 50f
                 val targetLevel = if (levelFactor >= 0) {
                     (maxLevel * levelFactor).toInt()
                 } else {
@@ -290,7 +284,7 @@ class MainActivity : Activity() {
                 eq.setBandLevel(i.toShort(), clamped)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Помилка застосування еквалайзера: ${e.message}")
+            Log.e(TAG, "Помилка еквалайзера: ${e.message}")
         }
     }
 

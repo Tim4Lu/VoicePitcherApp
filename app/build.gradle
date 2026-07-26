@@ -32,5 +32,6 @@ android {
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'com.arthenica:mobile-ffmpeg-full:4.4'
+    // Використовуємо правильний LTS-тег
+    implementation 'com.arthenica:mobile-ffmpeg-full:4.4.LTS'
 }

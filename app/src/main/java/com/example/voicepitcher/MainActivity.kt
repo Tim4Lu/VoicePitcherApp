@@ -143,7 +143,7 @@ class MainActivity : Activity() {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setAudioEncodingBitRate(320000) // Максимальний бітрейт для чистоти
+            setAudioEncodingBitRate(320000)
             setAudioSamplingRate(44100)
             setOutputFile(currentAudioPath)
 
@@ -225,19 +225,16 @@ class MainActivity : Activity() {
                 start()
             }
 
-            // Додаємо апаратний еквалайзер для підняття чіткості мовлення (Voice Clarity)
             mediaPlayer?.audioSessionId?.let { sessionId ->
                 equalizer = Equalizer(0, sessionId).apply {
                     enabled = true
-                    // Знаходимо смуги частот та підсилюємо середні/високі для розбірливості голосу
                     val bands = numberOfBands
                     for (i in 0 until bands) {
-                        val centerFreq = getCenterFreq(i.toShort()) / 1000 // в kHz
-                        if (centerFreq in 1..4) { 
-                            // Підсилюємо частоти від 1kHz до 4kHz (голосовий діапазон чіткості) на максимум можливого
-                            setBandLevel(i.toShort(), (bandLevelRange[1] * 0.8).toShort())
+                        val centerFreq = getCenterFreq(i.toShort()) / 1000
+                        if (centerFreq in 1..4) {
+                            val boostVal = (bandLevelRange[1].toInt() * 0.8).toInt().toShort()
+                            setBandLevel(i.toShort(), boostVal)
                         } else if (centerFreq < 300) {
-                            // Прибираємо низький гул та бубніння
                             setBandLevel(i.toShort(), bandLevelRange[0])
                         }
                     }
@@ -270,7 +267,6 @@ class MainActivity : Activity() {
                     }
                 }
                 statusText.text = "✅ Збережено в Downloads: $fileName"
-                Toast.javaClass
                 Toast.makeText(this, "Збережено в Завантаження!", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {

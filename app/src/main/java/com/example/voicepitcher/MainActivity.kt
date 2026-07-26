@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.PlaybackParams
-import android.media.audiofx.Equalizer
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
@@ -32,7 +31,6 @@ class MainActivity : Activity() {
 
     private var mediaRecorder: MediaRecorder? = null
     private var mediaPlayer: MediaPlayer? = null
-    private var equalizer: Equalizer? = null
     private var currentAudioPath: String = ""
     private var isRecording = false
 
@@ -122,20 +120,28 @@ class MainActivity : Activity() {
         }
         layout.addView(pitchSeekBar)
 
-        // Повзунок 2: Clarity (Регулювання чіткості/еквалайзера)
+        // Повзунок 2: Clarity / Gain (Підсилення чіткості та гучності)
         val clarityLabel = TextView(this).apply {
-            text = "Чіткість голосу (EQ): 50%"
+            text = "Чіткість/Гучність (Gain): 1.0x"
             setPadding(0, 40, 0, 10)
         }
         layout.addView(clarityLabel)
 
         claritySeekBar = SeekBar(this).apply {
-            max = 100
-            progress = 50
+            max = 200 // від 0 до 2.0x
+            progress = 100 // базовий рівень 1.0x
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    clarityLabel.text = "Чіткість голосу (EQ): $progress%"
-                    applyEqualizer(progress)
+                    val gainValue = progress / 100f
+                    clarityLabel.text = "Чіткість/Гучність (Gain): ${String.format("%.2f", gainValue)}x"
+                    try {
+                        mediaPlayer?.let {
+                            // Регулюємо гучність програмно наживо (від 0.0 до 2.0)
+                            it.setVolume(gainValue, gainValue)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Помилка зміни гучності: ${e.message}")
+                    }
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -206,7 +212,7 @@ class MainActivity : Activity() {
         startActivityForResult(intent, PICK_AUDIO_REQUEST_CODE)
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    Item@ override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_AUDIO_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
             val uri = data.data ?: return
@@ -234,53 +240,26 @@ class MainActivity : Activity() {
 
         try {
             mediaPlayer?.release()
-            equalizer?.release()
 
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(currentAudioPath)
                 prepare()
 
+                // Застосовуємо поточний пітч
                 val pitchValue = (pitchSeekBar.progress + 50) / 100f
                 val params = PlaybackParams()
                 params.pitch = pitchValue
                 playbackParams = params
 
-                start()
-            }
+                // Застосовуємо поточне посилення гучності ( Clarity / Gain )
+                val gainValue = claritySeekBar.progress / 100f
+                setVolume(gainValue, gainValue)
 
-            mediaPlayer?.audioSessionId?.let { sessionId ->
-                equalizer = Equalizer(0, sessionId).apply {
-                    enabled = true
-                    applyEqualizer(claritySeekBar.progress)
-                }
+                start()
             }
 
         } catch (e: IOException) {
             Log.e(TAG, "playAudio: ${e.message}")
-        }
-    }
-
-    private fun applyEqualizer(progress: Int) {
-        val eq = equalizer ?: return
-        try {
-            val bands = eq.numberOfBands
-            val maxRange = eq.bandLevelRange[1].toInt()
-            val minRange = eq.bandLevelRange[0].toInt()
-
-            // Перераховуємо прогрес (0..100) у коефіцієнт підсилення
-            val factor = (progress - 50) / 50f // від -1.0 до +1.0
-
-            for (i in 0 until bands) {
-                val centerFreq = eq.getCenterFreq(i.toShort()) / 1000
-                if (centerFreq in 1..4) {
-                    // Керуємо голосовим діапазоном чіткості від твого повзунка
-                    val targetLevel = (maxRange * factor * 0.8).toInt()
-                    val clamped = targetLevel.coerceIn(minRange, maxRange).toShort()
-                    eq.setBandLevel(i.toShort(), clamped)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Помилка еквалайзера: ${e.message}")
         }
     }
 
@@ -317,6 +296,5 @@ class MainActivity : Activity() {
         super.onDestroy()
         mediaRecorder?.release()
         mediaPlayer?.release()
-        equalizer?.release()
     }
 }

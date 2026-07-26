@@ -32,6 +32,5 @@ android {
 
 dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
-    // Бібліотека для обробки звуку
-    implementation 'com.arthenica:ffmpeg-kit-audio:6.0-2'
+    implementation 'com.arthenica:ffmpeg-kit-audio:6.0-2.LTS'
 }

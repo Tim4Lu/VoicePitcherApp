@@ -88,7 +88,6 @@ class MainActivity : Activity() {
         }
         layout.addView(playButton)
 
-        // Повзунок 1: Pitch (Висота голосу)
         val pitchLabel = TextView(this).apply {
             text = "Висота голосу (Pitch): 1.0x"
             setPadding(0, 40, 0, 10)
@@ -120,7 +119,6 @@ class MainActivity : Activity() {
         }
         layout.addView(pitchSeekBar)
 
-        // Повзунок 2: Clarity / Gain (Підсилення чіткості та гучності)
         val clarityLabel = TextView(this).apply {
             text = "Чіткість/Гучність (Gain): 1.0x"
             setPadding(0, 40, 0, 10)
@@ -128,15 +126,14 @@ class MainActivity : Activity() {
         layout.addView(clarityLabel)
 
         claritySeekBar = SeekBar(this).apply {
-            max = 200 // від 0 до 2.0x
-            progress = 100 // базовий рівень 1.0x
+            max = 200
+            progress = 100
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val gainValue = progress / 100f
                     clarityLabel.text = "Чіткість/Гучність (Gain): ${String.format("%.2f", gainValue)}x"
                     try {
                         mediaPlayer?.let {
-                            // Регулюємо гучність програмно наживо (від 0.0 до 2.0)
                             it.setVolume(gainValue, gainValue)
                         }
                     } catch (e: Exception) {
@@ -212,7 +209,7 @@ class MainActivity : Activity() {
         startActivityForResult(intent, PICK_AUDIO_REQUEST_CODE)
     }
 
-    Item@ override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_AUDIO_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
             val uri = data.data ?: return
@@ -245,13 +242,11 @@ class MainActivity : Activity() {
                 setDataSource(currentAudioPath)
                 prepare()
 
-                // Застосовуємо поточний пітч
                 val pitchValue = (pitchSeekBar.progress + 50) / 100f
                 val params = PlaybackParams()
                 params.pitch = pitchValue
                 playbackParams = params
 
-                // Застосовуємо поточне посилення гучності ( Clarity / Gain )
                 val gainValue = claritySeekBar.progress / 100f
                 setVolume(gainValue, gainValue)
 

@@ -19,8 +19,8 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.ReturnCode
+import com.arthenica.mobileffmpeg.Config
+import com.arthenica.mobileffmpeg.FFmpeg
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -45,8 +45,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "onCreate: Запуск додатку")
-        
         setupUI()
         checkPermissions()
     }
@@ -98,8 +96,8 @@ class MainActivity : Activity() {
         layout.addView(pitchLabel)
 
         pitchSeekBar = SeekBar(this).apply {
-            max = 150 // Від 0.5x до 2.0x
-            progress = 50 // 1.0x (Нормальний)
+            max = 150 
+            progress = 50 
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val pitchValue = (progress + 50) / 100f
@@ -189,7 +187,6 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_AUDIO_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
             val uri = data.data ?: return
-            Log.d(TAG, "Обрано файл: $uri")
             
             val tempFile = File(externalCacheDir, "imported_audio.wav")
             try {
@@ -249,16 +246,13 @@ class MainActivity : Activity() {
 
         val command = "-i \"$currentAudioPath\" -filter:a \"asetrate=44100*$pitchValue,atempo=1/$pitchValue\" -y \"$outputPath\""
         
-        Log.d(TAG, "Виконую FFmpeg: $command")
-
-        FFmpegKit.executeAsync(command) { session ->
-            val returnCode = session.returnCode
+        // Виклик стабільної бібліотеки mobile-ffmpeg
+        FFmpeg.executeAsync(command) { _, returnCode ->
             runOnUiThread {
-                if (ReturnCode.isSuccess(returnCode)) {
-                    Log.d(TAG, "FFmpeg успішно завершив роботу")
+                if (returnCode == Config.RETURN_CODE_SUCCESS) {
                     exportToDownloads(outputPath)
                 } else {
-                    Log.e(TAG, "Помилка FFmpeg. Логи: ${session.failStackTrace}")
+                    Log.e(TAG, "Помилка FFmpeg. Код: $returnCode")
                     statusText.text = "❌ Помилка при обробці файлу"
                     Toast.makeText(this@MainActivity, "Помилка конвертації", Toast.LENGTH_LONG).show()
                 }
@@ -285,7 +279,6 @@ class MainActivity : Activity() {
                     }
                 }
                 statusText.text = "✅ Збережено в Downloads: $fileName"
-                Log.d(TAG, "Файл успішно збережено в Downloads")
                 Toast.makeText(this, "Збережено в Завантаження!", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {

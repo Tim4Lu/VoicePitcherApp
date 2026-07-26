@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var importButton: Button
     private lateinit var saveButton: Button
     private lateinit var pitchSeekBar: SeekBar
+    private lateinit var claritySeekBar: SeekBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,10 +61,10 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Готовий до запису чистого голосу"
+            text = "Готовий до запису"
             textSize = 18f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 50)
+            setPadding(0, 0, 0, 40)
         }
         layout.addView(statusText)
 
@@ -83,15 +84,16 @@ class MainActivity : Activity() {
         layout.addView(importButton)
 
         playButton = Button(this).apply {
-            text = "▶️ Слухати (з чіткістю голосу)"
+            text = "▶️ Прослухати"
             isEnabled = false
             setOnClickListener { playAudio() }
         }
         layout.addView(playButton)
 
+        // Повзунок 1: Pitch (Висота голосу)
         val pitchLabel = TextView(this).apply {
             text = "Висота голосу (Pitch): 1.0x"
-            setPadding(0, 50, 0, 20)
+            setPadding(0, 40, 0, 10)
         }
         layout.addView(pitchLabel)
 
@@ -119,6 +121,27 @@ class MainActivity : Activity() {
             })
         }
         layout.addView(pitchSeekBar)
+
+        // Повзунок 2: Clarity (Регулювання чіткості/еквалайзера)
+        val clarityLabel = TextView(this).apply {
+            text = "Чіткість голосу (EQ): 50%"
+            setPadding(0, 40, 0, 10)
+        }
+        layout.addView(clarityLabel)
+
+        claritySeekBar = SeekBar(this).apply {
+            max = 100
+            progress = 50
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    clarityLabel.text = "Чіткість голосу (EQ): $progress%"
+                    applyEqualizer(progress)
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+        layout.addView(claritySeekBar)
 
         saveButton = Button(this).apply {
             text = "💾 Зберегти результат"
@@ -170,7 +193,7 @@ class MainActivity : Activity() {
             recordButton.text = "🔴 Почати запис"
             playButton.isEnabled = true
             saveButton.isEnabled = true
-            statusText.text = "Запис готовий до обробки."
+            statusText.text = "Запис готовий."
         } catch (e: Exception) {
             Log.e(TAG, "stopRecording: ${e.message}")
         }
@@ -228,21 +251,36 @@ class MainActivity : Activity() {
             mediaPlayer?.audioSessionId?.let { sessionId ->
                 equalizer = Equalizer(0, sessionId).apply {
                     enabled = true
-                    val bands = numberOfBands
-                    for (i in 0 until bands) {
-                        val centerFreq = getCenterFreq(i.toShort()) / 1000
-                        if (centerFreq in 1..4) {
-                            val boostVal = (bandLevelRange[1].toInt() * 0.8).toInt().toShort()
-                            setBandLevel(i.toShort(), boostVal)
-                        } else if (centerFreq < 300) {
-                            setBandLevel(i.toShort(), bandLevelRange[0])
-                        }
-                    }
+                    applyEqualizer(claritySeekBar.progress)
                 }
             }
 
         } catch (e: IOException) {
             Log.e(TAG, "playAudio: ${e.message}")
+        }
+    }
+
+    private fun applyEqualizer(progress: Int) {
+        val eq = equalizer ?: return
+        try {
+            val bands = eq.numberOfBands
+            val maxRange = eq.bandLevelRange[1].toInt()
+            val minRange = eq.bandLevelRange[0].toInt()
+
+            // Перераховуємо прогрес (0..100) у коефіцієнт підсилення
+            val factor = (progress - 50) / 50f // від -1.0 до +1.0
+
+            for (i in 0 until bands) {
+                val centerFreq = eq.getCenterFreq(i.toShort()) / 1000
+                if (centerFreq in 1..4) {
+                    // Керуємо голосовим діапазоном чіткості від твого повзунка
+                    val targetLevel = (maxRange * factor * 0.8).toInt()
+                    val clamped = targetLevel.coerceIn(minRange, maxRange).toShort()
+                    eq.setBandLevel(i.toShort(), clamped)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Помилка еквалайзера: ${e.message}")
         }
     }
 
@@ -252,7 +290,7 @@ class MainActivity : Activity() {
 
     private fun exportToDownloads(sourcePath: String) {
         try {
-            val fileName = "ClearVoice_${System.currentTimeMillis()}.wav"
+            val fileName = "VoicePitcher_${System.currentTimeMillis()}.wav"
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "audio/x-wav")

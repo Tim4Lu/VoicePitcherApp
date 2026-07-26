@@ -19,8 +19,6 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import com.arthenica.mobileffmpeg.Config
-import com.arthenica.mobileffmpeg.FFmpeg
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -53,7 +51,7 @@ class MainActivity : Activity() {
         val scrollView = ScrollView(this).apply {
             setPadding(30, 50, 30, 50)
         }
-        
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -68,7 +66,7 @@ class MainActivity : Activity() {
         layout.addView(statusText)
 
         recordButton = Button(this).apply {
-            text = "🔴 Почати запис (Сирник)"
+            text = "🔴 Почати запис"
             setOnClickListener {
                 if (isRecording) stopRecording() else startRecording()
             }
@@ -76,14 +74,14 @@ class MainActivity : Activity() {
         layout.addView(recordButton)
 
         importButton = Button(this).apply {
-            text = "📂 Вибрати файл після Adobe"
+            text = "📂 Вибрати файл"
             setPadding(0, 20, 0, 20)
             setOnClickListener { openFilePicker() }
         }
         layout.addView(importButton)
 
         playButton = Button(this).apply {
-            text = "▶️ Відтворити (Попереднє прослуховування)"
+            text = "▶️ Відтворити"
             isEnabled = false
             setOnClickListener { playAudio() }
         }
@@ -96,8 +94,8 @@ class MainActivity : Activity() {
         layout.addView(pitchLabel)
 
         pitchSeekBar = SeekBar(this).apply {
-            max = 150 
-            progress = 50 
+            max = 150
+            progress = 50
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val pitchValue = (progress + 50) / 100f
@@ -121,7 +119,7 @@ class MainActivity : Activity() {
         layout.addView(pitchSeekBar)
 
         saveButton = Button(this).apply {
-            text = "💾 Зберегти фінальний результат"
+            text = "💾 Зберегти результат"
             isEnabled = false
             setOnClickListener { saveProcessedAudio() }
         }
@@ -167,7 +165,7 @@ class MainActivity : Activity() {
             }
             mediaRecorder = null
             isRecording = false
-            recordButton.text = "🔴 Почати запис (Сирник)"
+            recordButton.text = "🔴 Почати запис"
             playButton.isEnabled = true
             saveButton.isEnabled = true
             statusText.text = "Запис збережено. Можеш прослухати."
@@ -187,7 +185,6 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_AUDIO_REQUEST_CODE && resultCode == RESULT_OK && data != null) {
             val uri = data.data ?: return
-            
             val tempFile = File(externalCacheDir, "imported_audio.wav")
             try {
                 contentResolver.openInputStream(uri)?.use { input ->
@@ -196,7 +193,7 @@ class MainActivity : Activity() {
                     }
                 }
                 currentAudioPath = tempFile.absolutePath
-                statusText.text = "Файл завантажено! Налаштуй частоту."
+                statusText.text = "Файл завантажено!"
                 playButton.isEnabled = true
                 saveButton.isEnabled = true
             } catch (e: Exception) {
@@ -215,7 +212,7 @@ class MainActivity : Activity() {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(currentAudioPath)
                 prepare()
-                
+
                 val pitchValue = (pitchSeekBar.progress + 50) / 100f
                 val params = PlaybackParams()
                 params.pitch = pitchValue
@@ -229,37 +226,7 @@ class MainActivity : Activity() {
     }
 
     private fun saveProcessedAudio() {
-        val pitchValue = (pitchSeekBar.progress + 50) / 100f
-        
-        if (pitchValue == 1.0f) {
-            exportToDownloads(currentAudioPath)
-            return
-        }
-
-        statusText.text = "⏳ Обробка звуку... Зачекай"
-        saveButton.isEnabled = false
-        playButton.isEnabled = false
-
-        val outputPath = "${externalCacheDir?.absolutePath}/processed_audio.wav"
-        val outputFile = File(outputPath)
-        if (outputFile.exists()) outputFile.delete()
-
-        val command = "-i \"$currentAudioPath\" -filter:a \"asetrate=44100*$pitchValue,atempo=1/$pitchValue\" -y \"$outputPath\""
-        
-        // Виклик стабільної бібліотеки mobile-ffmpeg
-        FFmpeg.executeAsync(command) { _, returnCode ->
-            runOnUiThread {
-                if (returnCode == Config.RETURN_CODE_SUCCESS) {
-                    exportToDownloads(outputPath)
-                } else {
-                    Log.e(TAG, "Помилка FFmpeg. Код: $returnCode")
-                    statusText.text = "❌ Помилка при обробці файлу"
-                    Toast.makeText(this@MainActivity, "Помилка конвертації", Toast.LENGTH_LONG).show()
-                }
-                saveButton.isEnabled = true
-                playButton.isEnabled = true
-            }
-        }
+        exportToDownloads(currentAudioPath)
     }
 
     private fun exportToDownloads(sourcePath: String) {
@@ -279,7 +246,7 @@ class MainActivity : Activity() {
                     }
                 }
                 statusText.text = "✅ Збережено в Downloads: $fileName"
-                Toast.makeText(this, "Збережено в Завантаження!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Збережено!", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Помилка експорту: ${e.message}")

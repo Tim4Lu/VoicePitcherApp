@@ -8,12 +8,14 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.PlaybackParams
+import android.media.audiofx.Equalizer
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.Gravity
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -31,6 +33,7 @@ class MainActivity : Activity() {
 
     private var mediaRecorder: MediaRecorder? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var equalizer: Equalizer? = null
     private var currentAudioPath: String = ""
     private var isRecording = false
 
@@ -40,7 +43,11 @@ class MainActivity : Activity() {
     private lateinit var importButton: Button
     private lateinit var saveButton: Button
     private lateinit var pitchSeekBar: SeekBar
-    private lateinit var claritySeekBar: SeekBar
+    private lateinit var eqContainer: LinearLayout
+
+    // Зберігаємо стани для пташок та значень повзунків еквалайзера
+    private val eqBandsEnabled = mutableMapOf<Int, Boolean>()
+    private val eqBandsProgress = mutableMapOf<Int, Int>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,19 +57,19 @@ class MainActivity : Activity() {
 
     private fun setupUI() {
         val scrollView = ScrollView(this).apply {
-            setPadding(30, 50, 30, 50)
+            setPadding(30, 40, 30, 40)
         }
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
         statusText = TextView(this).apply {
-            text = "Готовий до запису"
+            text = "Готовий до запису чи налаштування"
             textSize = 18f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 40)
+            setPadding(0, 0, 0, 30)
         }
         layout.addView(statusText)
 
@@ -76,7 +83,7 @@ class MainActivity : Activity() {
 
         importButton = Button(this).apply {
             text = "📂 Вибрати аудіофайл"
-            setPadding(0, 20, 0, 20)
+            setPadding(0, 10, 0, 10)
             setOnClickListener { openFilePicker() }
         }
         layout.addView(importButton)
@@ -88,9 +95,10 @@ class MainActivity : Activity() {
         }
         layout.addView(playButton)
 
+        // Блок висоти голосу (Pitch)
         val pitchLabel = TextView(this).apply {
             text = "Висота голосу (Pitch): 1.0x"
-            setPadding(0, 40, 0, 10)
+            setPadding(0, 30, 0, 10)
         }
         layout.addView(pitchLabel)
 
@@ -110,7 +118,7 @@ class MainActivity : Activity() {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Помилка зміни пітчу: ${e.message}")
+                        Log.e(TAG, "Помилка пітчу: ${e.message}")
                     }
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -119,42 +127,171 @@ class MainActivity : Activity() {
         }
         layout.addView(pitchSeekBar)
 
-        val clarityLabel = TextView(this).apply {
-            text = "Чіткість/Гучність (Gain): 1.0x"
+        // Заголовок еквалайзера
+        val eqTitle = TextView(this).apply {
+            text = "🎛 Повноцінний еквалайзер голосу"
+            textSize = 16f
             setPadding(0, 40, 0, 10)
         }
-        layout.addView(clarityLabel)
+        layout.addView(eqTitle)
 
-        claritySeekBar = SeekBar(this).apply {
-            max = 200
-            progress = 100
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val gainValue = progress / 100f
-                    clarityLabel.text = "Чіткість/Гучність (Gain): ${String.format("%.2f", gainValue)}x"
-                    try {
-                        mediaPlayer?.let {
-                            it.setVolume(gainValue, gainValue)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Помилка зміни гучності: ${e.message}")
-                    }
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
+        // Контейнер, куди динамічно додаватимуться смуги з пташками та описами
+        eqContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
-        layout.addView(claritySeekBar)
+        layout.addView(eqContainer)
+
+        // Ініціалізуємо стандартні смуги (створимо шаблонні, якщо медіаплеєр ще не дав сесію)
+        buildDefaultEqualizerUI()
 
         saveButton = Button(this).apply {
             text = "💾 Зберегти результат"
             isEnabled = false
+            setPadding(0, 20, 0, 20)
             setOnClickListener { saveProcessedAudio() }
         }
         layout.addView(saveButton)
 
         scrollView.addView(layout)
         setContentView(scrollView)
+    }
+
+    private fun getFrequencyDescription(centerHz: Int): String {
+        return when {
+            centerHz < 150 -> "Гул / Низькі частоти (усуває задуху, вібрацію мікрофона)"
+            centerHz < 400 -> "Тіло / Теплота голосу (додає щільності баритону)"
+            centerHz < 1000 -> "Середина / Мутність (частоту краще трохи прибрати для чистоти)"
+            centerHz < 3000 -> "Чіتкість / Розбірливість мовлення (ключ для Adobe Podcast)"
+            else -> "Дзвінкість / Повітря (додає яскравості та «дорогого» звуку)"
+        }
+    }
+
+    private fun buildDefaultEqualizerUI() {
+        eqContainer.removeAllViews()
+        // Якщо еквалайзер ще не ініціалізований, покажемо базові 5 стандартних діапазонів
+        val defaultBands = listOf(60, 230, 910, 3000, 12000)
+        
+        for ((index, freq) in defaultBands.withIndex()) {
+            val bandLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 10, 0, 15)
+            }
+
+            val isEnabled = eqBandsEnabled.getOrPut(index) { true }
+            val progressVal = eqBandsProgress.getOrPut(index) { 50 }
+
+            val checkBox = CheckBox(this).apply {
+                text = "Смуга ${freq / 1000.let { if (it > 0) "${it}kHz" else "${freq}Hz" }}"
+                isChecked = isEnabled
+                setOnCheckedChangeListener { _, checked ->
+                    eqBandsEnabled[index] = checked
+                    applyEqualizerChanges()
+                }
+            }
+            bandLayout.addView(checkBox)
+
+            val descText = TextView(this).apply {
+                text = getFrequencyDescription(freq)
+                textSize = 12f
+                setPadding(30, 0, 0, 5)
+            }
+            bandLayout.addView(descText)
+
+            val seekBar = SeekBar(this).apply {
+                max = 100
+                progress = progressVal
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        eqBandsProgress[index] = progress
+                        applyEqualizerChanges()
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                })
+            }
+            bandLayout.addView(seekBar)
+            eqContainer.addView(bandLayout)
+        }
+    }
+
+    private fun initEqualizerUI(eq: Equalizer) {
+        eqContainer.removeAllViews()
+        val numBands = eq.numberOfBands.toInt()
+
+        for (i in 0 until numBands) {
+            val centerFreqHz = eq.getCenterFreq(i.toShort()) / 1000
+            val bandLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 10, 0, 15)
+            }
+
+            val isEnabled = eqBandsEnabled.getOrPut(i) { true }
+            val progressVal = eqBandsProgress.getOrPut(i) { 50 }
+
+            val checkBox = CheckBox(this).apply {
+                text = "Смуга ${i + 1}: ${centerFreqHz}Hz"
+                isChecked = isEnabled
+                setOnCheckedChangeListener { _, checked ->
+                    eqBandsEnabled[i] = checked
+                    applyEqualizerChanges()
+                }
+            }
+            bandLayout.addView(checkBox)
+
+            val descText = TextView(this).apply {
+                text = getFrequencyDescription(centerFreqHz)
+                textSize = 12f
+                setPadding(30, 0, 0, 5)
+            }
+            bandLayout.addView(descText)
+
+            val seekBar = SeekBar(this).apply {
+                max = 100
+                progress = progressVal
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        eqBandsProgress[i] = progress
+                        applyEqualizerChanges()
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                })
+            }
+            bandLayout.addView(seekBar)
+            eqContainer.addView(bandLayout)
+        }
+        applyEqualizerChanges()
+    }
+
+    private fun applyEqualizerChanges() {
+        val eq = equalizer ?: return
+        try {
+            val numBands = eq.numberOfBands.toInt()
+            val minLevel = eq.bandLevelRange[0].toInt()
+            val maxLevel = eq.bandLevelRange[1].toInt()
+
+            for (i in 0 until numBands) {
+                val enabled = eqBandsEnabled[i] ?: true
+                if (!enabled) {
+                    eq.setBandLevel(i.toShort(), 0)
+                    continue
+                }
+
+                val progress = eqBandsProgress[i] ?: 50
+                // Конвертуємо шкалу 0..100 у мілібебели апаратного еквалайзера
+                val levelFactor = (progress - 50) / 50f // від -1.0 до +1.0
+                val targetLevel = if (levelFactor >= 0) {
+                    (maxLevel * levelFactor).toInt()
+                } else {
+                    (Math.abs(minLevel) * levelFactor).toInt()
+                }
+
+                val clamped = targetLevel.coerceIn(minLevel, maxLevel).toShort()
+                eq.setBandLevel(i.toShort(), clamped)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Помилка застосування еквалайзера: ${e.message}")
+        }
     }
 
     private fun checkPermissions() {
@@ -196,7 +333,7 @@ class MainActivity : Activity() {
             recordButton.text = "🔴 Почати запис"
             playButton.isEnabled = true
             saveButton.isEnabled = true
-            statusText.text = "Запис готовий."
+            statusText.text = "Запис готовий до налаштування."
         } catch (e: Exception) {
             Log.e(TAG, "stopRecording: ${e.message}")
         }
@@ -237,6 +374,7 @@ class MainActivity : Activity() {
 
         try {
             mediaPlayer?.release()
+            equalizer?.release()
 
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(currentAudioPath)
@@ -247,10 +385,14 @@ class MainActivity : Activity() {
                 params.pitch = pitchValue
                 playbackParams = params
 
-                val gainValue = claritySeekBar.progress / 100f
-                setVolume(gainValue, gainValue)
-
                 start()
+            }
+
+            mediaPlayer?.audioSessionId?.let { sessionId ->
+                equalizer = Equalizer(0, sessionId).apply {
+                    enabled = true
+                    initEqualizerUI(this)
+                }
             }
 
         } catch (e: IOException) {
@@ -291,5 +433,6 @@ class MainActivity : Activity() {
         super.onDestroy()
         mediaRecorder?.release()
         mediaPlayer?.release()
+        equalizer?.release()
     }
 }

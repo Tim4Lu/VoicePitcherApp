@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.PlaybackParams
+import android.media.audiofx.Equalizer
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
@@ -31,6 +32,7 @@ class MainActivity : Activity() {
 
     private var mediaRecorder: MediaRecorder? = null
     private var mediaPlayer: MediaPlayer? = null
+    private var equalizer: Equalizer? = null
     private var currentAudioPath: String = ""
     private var isRecording = false
 
@@ -58,7 +60,7 @@ class MainActivity : Activity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Готовий до роботи"
+            text = "Готовий до запису чистого голосу"
             textSize = 18f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 50)
@@ -74,21 +76,21 @@ class MainActivity : Activity() {
         layout.addView(recordButton)
 
         importButton = Button(this).apply {
-            text = "📂 Вибрати файл"
+            text = "📂 Вибрати аудіофайл"
             setPadding(0, 20, 0, 20)
             setOnClickListener { openFilePicker() }
         }
         layout.addView(importButton)
 
         playButton = Button(this).apply {
-            text = "▶️ Відтворити"
+            text = "▶️ Слухати (з чіткістю голосу)"
             isEnabled = false
             setOnClickListener { playAudio() }
         }
         layout.addView(playButton)
 
         val pitchLabel = TextView(this).apply {
-            text = "Частота (Pitch): 1.0x"
+            text = "Висота голосу (Pitch): 1.0x"
             setPadding(0, 50, 0, 20)
         }
         layout.addView(pitchLabel)
@@ -99,7 +101,7 @@ class MainActivity : Activity() {
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     val pitchValue = (progress + 50) / 100f
-                    pitchLabel.text = "Частота (Pitch): ${pitchValue}x"
+                    pitchLabel.text = "Висота голосу (Pitch): ${pitchValue}x"
                     try {
                         mediaPlayer?.let {
                             if (it.isPlaying) {
@@ -109,7 +111,7 @@ class MainActivity : Activity() {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Помилка зміни частоти: ${e.message}")
+                        Log.e(TAG, "Помилка зміни пітчу: ${e.message}")
                     }
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -141,7 +143,7 @@ class MainActivity : Activity() {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setAudioEncodingBitRate(256000)
+            setAudioEncodingBitRate(320000) // Максимальний бітрейт для чистоти
             setAudioSamplingRate(44100)
             setOutputFile(currentAudioPath)
 
@@ -150,7 +152,7 @@ class MainActivity : Activity() {
                 start()
                 isRecording = true
                 recordButton.text = "⏹ Зупинити запис"
-                statusText.text = "Йде запис..."
+                statusText.text = "Йде запис високої якості..."
             } catch (e: IOException) {
                 Log.e(TAG, "startRecording: ${e.message}")
             }
@@ -168,7 +170,7 @@ class MainActivity : Activity() {
             recordButton.text = "🔴 Почати запис"
             playButton.isEnabled = true
             saveButton.isEnabled = true
-            statusText.text = "Запис збережено. Можеш прослухати."
+            statusText.text = "Запис готовий до обробки."
         } catch (e: Exception) {
             Log.e(TAG, "stopRecording: ${e.message}")
         }
@@ -209,6 +211,8 @@ class MainActivity : Activity() {
 
         try {
             mediaPlayer?.release()
+            equalizer?.release()
+
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(currentAudioPath)
                 prepare()
@@ -220,6 +224,26 @@ class MainActivity : Activity() {
 
                 start()
             }
+
+            // Додаємо апаратний еквалайзер для підняття чіткості мовлення (Voice Clarity)
+            mediaPlayer?.audioSessionId?.let { sessionId ->
+                equalizer = Equalizer(0, sessionId).apply {
+                    enabled = true
+                    // Знаходимо смуги частот та підсилюємо середні/високі для розбірливості голосу
+                    val bands = numberOfBands
+                    for (i in 0 until bands) {
+                        val centerFreq = getCenterFreq(i.toShort()) / 1000 // в kHz
+                        if (centerFreq in 1..4) { 
+                            // Підсилюємо частоти від 1kHz до 4kHz (голосовий діапазон чіткості) на максимум можливого
+                            setBandLevel(i.toShort(), (bandLevelRange[1] * 0.8).toShort())
+                        } else if (centerFreq < 300) {
+                            // Прибираємо низький гул та бубніння
+                            setBandLevel(i.toShort(), bandLevelRange[0])
+                        }
+                    }
+                }
+            }
+
         } catch (e: IOException) {
             Log.e(TAG, "playAudio: ${e.message}")
         }
@@ -231,7 +255,7 @@ class MainActivity : Activity() {
 
     private fun exportToDownloads(sourcePath: String) {
         try {
-            val fileName = "Voiceover_${System.currentTimeMillis()}.wav"
+            val fileName = "ClearVoice_${System.currentTimeMillis()}.wav"
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "audio/x-wav")
@@ -246,7 +270,8 @@ class MainActivity : Activity() {
                     }
                 }
                 statusText.text = "✅ Збережено в Downloads: $fileName"
-                Toast.makeText(this, "Збережено!", Toast.LENGTH_SHORT).show()
+                Toast.javaClass
+                Toast.makeText(this, "Збережено в Завантаження!", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Помилка експорту: ${e.message}")
@@ -258,5 +283,6 @@ class MainActivity : Activity() {
         super.onDestroy()
         mediaRecorder?.release()
         mediaPlayer?.release()
+        equalizer?.release()
     }
 }

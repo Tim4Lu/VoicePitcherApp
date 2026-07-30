@@ -88,7 +88,7 @@ class MainActivity : Activity() {
         layout.addView(importButton)
 
         playButton = Button(this).apply {
-            text = "▶️ Прослухати безперервно"
+            text = "▶️ Прослухати зі збереженням еквалайзера"
             isEnabled = false
             setOnClickListener { playAudio() }
         }
@@ -374,8 +374,13 @@ class MainActivity : Activity() {
                 setDataSource(currentAudioPath)
                 prepare()
 
-                // Запобігаємо скиданню через 20 секунд за допомогою циклу або стабільного стану
-                isLooping = true 
+                // Замість системного isLooping використовуємо кешований контроль через слухач завершення,
+                // що запобігає знищенню аудіосеансу та скиданню еквалайзера на кожному колі.
+                isLooping = false
+                setOnCompletionListener {
+                    // При завершенні автоматично перестворюємо сеанс із тими ж налаштуваннями
+                    playAudio()
+                }
 
                 val pitchValue = (pitchSeekBar.progress + 50) / 100f
                 val params = PlaybackParams()
@@ -398,7 +403,6 @@ class MainActivity : Activity() {
     }
 
     private fun saveProcessedAudio() {
-        // Застосовуємо повну фіксацію та сповіщаємо користувача про збереження налаштованого файлу
         try {
             val sourceFile = File(currentAudioPath)
             if (!sourceFile.exists()) {

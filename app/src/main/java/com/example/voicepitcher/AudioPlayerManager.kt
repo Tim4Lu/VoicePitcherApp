@@ -32,6 +32,7 @@ class AudioPlayerManager {
                 params.pitch = pitch
                 playbackParams = params
 
+                // Фіксуємо гучність відразу при старті
                 setVolume(volume, volume)
                 start()
             }
@@ -64,7 +65,9 @@ class AudioPlayerManager {
 
     fun setVolume(volume: Float) {
         try {
-            mediaPlayer?.setVolume(volume, volume)
+            // Забезпечуємо підтримку підсилення (Gain)
+            val clampedVol = volume.coerceIn(0.0f, 2.0f)
+            mediaPlayer?.setVolume(clampedVol, clampedVol)
         } catch (e: Exception) {
             Log.e(TAG, "Помилка зміни volume: ${e.message}")
         }

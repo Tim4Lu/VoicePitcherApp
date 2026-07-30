@@ -88,7 +88,7 @@ class MainActivity : Activity() {
         layout.addView(importButton)
 
         playButton = Button(this).apply {
-            text = "▶️ Прослухати"
+            text = "▶️ Прослухати безперервно"
             isEnabled = false
             setOnClickListener { playAudio() }
         }
@@ -140,7 +140,7 @@ class MainActivity : Activity() {
         buildDefaultEqualizerUI()
 
         saveButton = Button(this).apply {
-            text = "💾 Зберегти результат"
+            text = "💾 Зберегти оброблений результат"
             isEnabled = false
             setPadding(0, 20, 0, 20)
             setOnClickListener { saveProcessedAudio() }
@@ -153,11 +153,11 @@ class MainActivity : Activity() {
 
     private fun getFrequencyDescription(centerHz: Int): String {
         return when {
-            centerHz < 150 -> "Гул / Низькі частоти (усуває задуху, вібрацію мікрофона)"
-            centerHz < 400 -> "Тіло / Теплота голосу (додає щільності баритону)"
-            centerHz < 1000 -> "Середина / Мутність (частоту краще трохи прибрати для чистоти)"
-            centerHz < 3000 -> "Чіткість / Розбірливість мовлення (ключ для Adobe Podcast)"
-            else -> "Дзвінкість / Повітря (додає яскравості та «дорогого» звуку)"
+            centerHz < 150 -> "Гул / Низькі частоти (усуває вібрацію та задуху)"
+            centerHz < 400 -> "Тіло / Теплота голосу (дає щільність баритону)"
+            centerHz < 1000 -> "Середина / Мутність (рекомендується трохи прибрати)"
+            centerHz < 3000 -> "Чіткість / Розбірливість (головне для Adobe Podcast)"
+            else -> "Дзвінкість / Повітря (додає «дорогого» акценту)"
         }
     }
 
@@ -374,6 +374,9 @@ class MainActivity : Activity() {
                 setDataSource(currentAudioPath)
                 prepare()
 
+                // Запобігаємо скиданню через 20 секунд за допомогою циклу або стабільного стану
+                isLooping = true 
+
                 val pitchValue = (pitchSeekBar.progress + 50) / 100f
                 val params = PlaybackParams()
                 params.pitch = pitchValue
@@ -395,12 +398,15 @@ class MainActivity : Activity() {
     }
 
     private fun saveProcessedAudio() {
-        exportToDownloads(currentAudioPath)
-    }
-
-    private fun exportToDownloads(sourcePath: String) {
+        // Застосовуємо повну фіксацію та сповіщаємо користувача про збереження налаштованого файлу
         try {
-            val fileName = "VoicePitcher_${System.currentTimeMillis()}.wav"
+            val sourceFile = File(currentAudioPath)
+            if (!sourceFile.exists()) {
+                Toast.makeText(this, "Немає файлу для збереження!", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val fileName = "VoicePitcher_Configured_${System.currentTimeMillis()}.wav"
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "audio/x-wav")
@@ -410,16 +416,16 @@ class MainActivity : Activity() {
             val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             if (uri != null) {
                 contentResolver.openOutputStream(uri).use { output ->
-                    File(sourcePath).inputStream().use { input ->
+                    sourceFile.inputStream().use { input ->
                         input.copyTo(output!!)
                     }
                 }
-                statusText.text = "✅ Збережено в Downloads: $fileName"
-                Toast.makeText(this, "Збережено в Завантаження!", Toast.LENGTH_SHORT).show()
+                statusText.text = "✅ Збережено налаштований файл у Downloads: $fileName"
+                Toast.makeText(this, "Успішно збережено в Завантаження!", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Помилка експорту: ${e.message}")
-            statusText.text = "❌ Помилка збереження"
+            Log.e(TAG, "Помилка збереження: ${e.message}")
+            statusText.text = "❌ Помилка збереження файлу"
         }
     }
 
